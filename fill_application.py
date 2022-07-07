@@ -42,8 +42,16 @@ journal_list = []
 
 browser = webdriver.Firefox()
 browser.get("https://loginmiur.cineca.it/front.php/login.html")
-browser.find_element(By.ID, "username").send_keys("SLVMHL821")
-browser.find_element(By.ID, "password").send_keys("Aapplicat0!")
+
+fl = open("login.txt", "r")
+lines = fl.readlines()
+username = lines[0]
+password = lines[1]
+fl.close()
+
+
+browser.find_element(By.ID, "username").send_keys(username)
+browser.find_element(By.ID, "password").send_keys(password)
 browser.find_element(By.NAME, "Login").click()
 
 ## find missing pub mode (not filling anything)
@@ -79,8 +87,7 @@ for pub in publications:
         if pub["journal"] == "Physical Review C":
             journal_id = phys_rev_c_pre2016
 
-    doi = "doi.org/{}
-    ".format(pub["doi"])
+    doi = "doi.org/{}".format(pub["doi"])
 
     many = False
     if "..." in authors:
