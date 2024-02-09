@@ -1,6 +1,7 @@
 import requests
 import json
 from utils import *
+import pandas as pd
 
 new_dicts = []
 
@@ -54,11 +55,19 @@ journals_id = {
 }
 
 
+# Open the JSON file and load its content into a Python dictionary
+with open("data/WoS_data.json", 'r') as file:
+    wos = json.load(file)  
+
+publist_wos = wos["records"]["publication"]["list"]
+print(len(publist_wos))
+
 n_processed = 0
-for page in range(1, 3):
-    # Replace 'your_api_url_here' with the actual API URL you want to call
-    #api_url = f"https://inspirehep.net/api/literature?sort=mostcited&size=10&page={page}&q=a%20M.Selvaggi.1"
-    api_url = f"https://inspirehep.net/api/literature?size=10&page={page}&q=a%20M.Selvaggi.1"
+#for page in range(1, 26):
+for page in range(1, 26):
+   # Replace 'your_api_url_here' with the actual API URL you want to call
+    api_url = f"https://inspirehep.net/api/literature?sort=mostcited&size=50&page={page}&q=a%20M.Selvaggi.1"
+    api_url = f"https://inspirehep.net/api/literature?size=50&page={page}&q=a%20M.Selvaggi.1"
 
     print(f"requesting api for page {page} ... ")
     # Make the HTTP GET request to the API
@@ -107,32 +116,31 @@ for page in range(1, 3):
             ## Title
             journal = None
             iisn = None
-            if not "journal_title_variants" in entry["metadata"]:
-                print(f"api call: {api_url}, entry = {i} has no journal, skipping ... ")
-                continue    
-    
-            if len(entry["metadata"]["journal_title_variants"]) == 0:
-                print(f"api call: {api_url}, entry = {i} has no journal, skipping ... ")
-            else:
-                for j in entry["metadata"]["journal_title_variants"]:
-                    if j in journals_id.keys():
-                        iisn = journals_id[j]
-                        journal = j
-                        break
-                    else:
-                        print(f"api call: {api_url}, entry = {i}, doi: {doi} ")
-                        print("   --> journals not found in dict: ", entry["metadata"]["journal_title_variants"])
+            if "journal_title_variants" in entry["metadata"]:    
+                if len(entry["metadata"]["journal_title_variants"]) > 0:
+                    for j in entry["metadata"]["journal_title_variants"]:
+                        if j in journals_id.keys():
+                            iisn = journals_id[j]
+                            journal = j
+                            break
+               
                       
             ## Scopus unique_id
             scopus_id = None
             if doi is not None:
                 scopus_id = get_scopus_id(doi)
                 
+            ### get WoS unique ID
+            wos_id = None
+            if doi is not None:
+                wos_id = find_ut_by_doi(publist_wos, doi)
+                
             ## publication info
             date = None
             if "publication_info" in entry["metadata"]:
                 if len(entry["metadata"]["publication_info"]) > 0:
-                   date = entry["metadata"]["publication_info"][0]["year"]
+                    if "year" in entry["metadata"]["publication_info"][0]:
+                        date = entry["metadata"]["publication_info"][0]["year"]
 
             ## arxiv number
             arxiv = None
@@ -153,32 +161,45 @@ for page in range(1, 3):
                                 break
             
             if url is None:
-                print(f"api call: {api_url}, entry = {i}, doi: {doi} ")
-                print("   --> could not find open access link, trying arXiv ... ")
+                if "documents" in entry["metadata"]:
+                    for d in entry["metadata"]["documents"]:
+                        #print(d.keys())
+                        if "url" in d:
+                            url = d["url"]
+                            break
+            
+            if url is None:
+                print("   --> could not find open access, try arXiv ... ")
                 if arxiv is not None:
-                    url = f"https://arxiv.org/pdf/{arxiv}.pdf"
-                else:
-                    print("   --> could not find arXiv either, pick any link at this point ... ")
-                    if "documents" in entry["metadata"]:
-                        for d in entry["metadata"]["documents"]:
-                            #print(d.keys())
-                            if "url" in d:
-                                url = d["url"]
-                                break                    
+                    url = f"https://arxiv.org/pdf/{arxiv}.pdf"                 
                     
             if url is None:
                 print(f"api call: {api_url}, entry = {i}, doi: {doi} ")
                 print("   --> could REALLY not find ANY link, SKIPPING ... ")
-                                                            
+                
+                
+            ## get authors
+            authors = ""
+            if "authors" in entry["metadata"]:
+                for a in entry["metadata"]["authors"]:
+                    if "last_name" in a and "first_name" in a:
+                        last = a["last_name"].upper()
+                        first = a["first_name"].upper()[0]
+                        authors += f"{last} {first}; "
+                         
+                         
+                                                                               
             new_dict = {
                 "doi": doi,
                 "title": title,
                 "journal": journal,  
                 "iisn": iisn,
                 "scopus_id": scopus_id,
-                "date": date ,
+                "wos_id": wos_id,
+                "date": date,
                 "url": url,
-                "arxiv": arxiv
+                "arxiv": arxiv,
+                "authors": authors
             }
             
             # Append the new dictionary to the list
@@ -190,21 +211,43 @@ for page in range(1, 3):
         print(f"Failed to fetch data: HTTP {response.status_code}")
 
 
-none_sublists = extract_none_sublists(new_dicts)
+
 
 print("")
 print(f"{n_processed} entries processed")
 
-print("")
-for key, none_list in none_sublists.items():
-    if none_list:  # Only print keys with non-empty lists
-        print(f"Key '{key}' has {len(none_list)} dictionaries with None values.")
-print("")
-
 n = len(new_dicts)
-print(json.dumps(new_dicts, indent=4, sort_keys=True))
+#print(json.dumps(new_dicts, indent=4, sort_keys=True))
 # Save the list of dictionaries to a JSON file
+
 with open("skimmed_data.json", "w") as json_file:
     json.dump(new_dicts, json_file, indent=4)
 
 print(f"{n} entries stored to skimmed_data.json")
+
+print("")
+
+none_sublists = extract_none_sublists(new_dicts)
+for key, none_list in none_sublists.items():                    
+    if none_list:  # Only print keys with non-empty lists
+        print("")        
+        print(f"Key '{key}' has {len(none_list)} dictionaries with weird values values.")
+        print("")
+        filtered_dict_list = []
+        for d in none_list:
+            # If the key has the value to remove, create a copy without the key
+            d_copy = {k: v for k, v in d.items() if k != "authors"}
+            filtered_dict_list.append(d_copy)
+            
+            
+        df = pd.DataFrame(filtered_dict_list)
+        # Adjust display options
+        pd.set_option('display.max_colwidth', 20)  # Adjust the width as needed
+        pd.set_option('display.max_columns', None)  # Ensure all columns are shown
+        pd.set_option('display.width', 200)  # Adjust the total width to fit your terminal or output window
+
+        # Print the DataFrame
+        print(df.to_string(index=False))
+
+
+

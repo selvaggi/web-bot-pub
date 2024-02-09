@@ -1,27 +1,14 @@
-from utils import *
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
-# Example input string
-input_str_example = """
-    Hannes Sakulin(
-        CERN
-    )
-    ; Simone Scarfi(
-        CERN
-    )
-    ; Michele Selvaggi(
-        CERN
-    )
-    ; Archana Sharma(
-        CERN
-    )
-    ; Ksenia Shchelina(
-        CERN
-    )
-    ; Pedro Silva(
-        CERN
-    )
-"""
+options = Options()
+# options.add_argument('--headless')
+# options.add_argument('--no-sandbox')
+options.add_argument('--disable-dev-shm-usage')
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-# Format the example string
-formatted_output = format_authors(input_str_example)
-print(formatted_output)
+driver.get("https://python.org")
+print(driver.title)
+driver.close()
